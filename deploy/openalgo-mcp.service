@@ -1,0 +1,28 @@
+[Unit]
+Description=OpenAlgo MCP Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/openalgo-mcp
+Environment="PATH=/opt/openalgo-mcp/venv/bin"
+EnvironmentFile=/opt/openalgo-mcp/.env
+ExecStart=/opt/openalgo-mcp/venv/bin/python -m openalgo_mcp.mcpserver ${OPENALGO_API_KEY} ${OPENALGO_HOST} --transport streamable-http --http-host ${HTTP_HOST} --http-port ${HTTP_PORT}
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openalgo-mcp
+
+[Install]
+WantedBy=multi-user.target

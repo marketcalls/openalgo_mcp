@@ -83,37 +83,51 @@ uvx openalgo-mcp@latest YOUR-API-KEY http://127.0.0.1:5000 --transport streamabl
 uvx openalgo-mcp@latest YOUR-API-KEY http://127.0.0.1:5000 --transport streamable-http --http-host 127.0.0.1 --http-port 9000
 ```
 
-### Option 3: Deploy to Vercel (Cloud Hosting)
+### Option 3: Deploy on VPS (Production)
 
-Deploy OpenAlgo MCP to Vercel for cloud-hosted access:
+Deploy OpenAlgo MCP on a VPS server (Vultr, DigitalOcean, AWS EC2, etc.) with HTTPS:
 
-#### Quick Deploy
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyour-repo%2Fopenalgo-mcp)
-
-#### Manual Deploy
+#### Quick Setup
 
 ```bash
-# Install Vercel CLI
-npm install -g vercel
+# 1. Upload deployment files from your local machine
+scp -r deploy src pyproject.toml requirements.txt root@your-server-ip:/tmp/
 
-# Login
-vercel login
+# 2. Connect to your server
+ssh root@your-server-ip
 
-# Set environment variables
-vercel env add OPENALGO_API_KEY
-vercel env add OPENALGO_HOST
+# 3. Run installation (will prompt for domain name)
+chmod +x /tmp/deploy/install.sh
+/tmp/deploy/install.sh
+# Enter your domain when prompted (e.g., mcp.yourdomain.com)
 
-# Deploy
-vercel
+# 4. Configure OpenAlgo credentials
+sudo nano /opt/openalgo-mcp/.env
+
+# 5. Copy application files
+sudo cp -r /tmp/src/* /opt/openalgo-mcp/
+cd /opt/openalgo-mcp && source venv/bin/activate && pip install -e .
+
+# 6. Setup systemd service
+sudo cp /tmp/deploy/openalgo-mcp.service /etc/systemd/system/
+sudo systemctl enable --now openalgo-mcp
+
+# 7. Setup Nginx (automatically uses your domain)
+chmod +x /tmp/deploy/setup-nginx.sh
+sudo /tmp/deploy/setup-nginx.sh
+
+# 8. Get SSL certificate
+sudo certbot --nginx -d your-domain.com
 ```
 
-#### Important Notes
-- ⚠️ **OpenAlgo must be publicly accessible** (not localhost)
-- Use tunnel services (Ngrok, Cloudflare Tunnel) if OpenAlgo runs locally
-- Vercel functions have 60s timeout (Hobby) / 300s (Pro)
+#### Features
+- ✅ Full HTTPS with Let's Encrypt
+- ✅ Nginx reverse proxy
+- ✅ Systemd auto-restart
+- ✅ Cloudflare integration support
+- ✅ Production-ready configuration
 
-📖 **Full deployment guide:** See [VERCEL_DEPLOY.md](./VERCEL_DEPLOY.md)
+📖 **Complete deployment guide:** See [deploy/DEPLOYMENT_GUIDE.md](./deploy/DEPLOYMENT_GUIDE.md)
 
 ---
 
