@@ -320,50 +320,38 @@ server {
     listen [::]:80;
     server_name DOMAIN_PLACEHOLDER;
 
-    # Let's Encrypt challenge
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
-
-    # Redirect all other traffic to HTTPS
     location / {
-        return 301 https://$server_name$request_uri;
+        return 301 https://$host$request_uri;
     }
 }
 
 # HTTPS - Main server block
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+
     server_name DOMAIN_PLACEHOLDER;
 
     # SSL Certificate
     ssl_certificate /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem;
 
-    # SSL Configuration
+    # SSL Configuration (matches working demo.openalgo.in)
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers off;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
-
-    # SSL Session
-    ssl_session_cache shared:SSL:10m;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers EECDH+AESGCM:EDH+AESGCM;
+    ssl_ecdh_curve secp384r1;
     ssl_session_timeout 10m;
+    ssl_session_cache shared:SSL:10m;
     ssl_session_tickets off;
-
-    # OCSP Stapling
     ssl_stapling on;
     ssl_stapling_verify on;
-    ssl_trusted_certificate /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/chain.pem;
-    resolver 8.8.8.8 8.8.4.4 valid=300s;
-    resolver_timeout 5s;
 
-    # Security Headers
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    # Security Headers (matches working demo.openalgo.in)
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Strict-Transport-Security "max-age=63072000" always;
 
     # Cloudflare Real IP
     set_real_ip_from 173.245.48.0/20;
@@ -411,14 +399,16 @@ server {
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Port $server_port;
 
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        # Timeouts (extended for broker authentication)
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
 
         # Buffering
         proxy_buffering off;
         proxy_request_buffering off;
+
+        proxy_redirect off;
     }
 
     # Health check endpoint
