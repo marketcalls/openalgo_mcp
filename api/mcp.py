@@ -182,12 +182,12 @@ def get_quote(symbol: str, exchange: str = "NSE") -> str:
     except Exception as e:
         return f"Error getting quote: {str(e)}"
 
-# Export the FastMCP app for Vercel
-# FastMCP uses Starlette internally, export the app directly
-app = mcp.app
+# Export the FastMCP instance directly for Vercel
+# FastMCP implements ASGI protocol, so it can be used directly
+app = mcp
 
 # For local testing
 if __name__ == "__main__":
     print("Starting OpenAlgo MCP Server...")
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(mcp, host="0.0.0.0", port=8000)
