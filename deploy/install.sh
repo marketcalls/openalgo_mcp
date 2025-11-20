@@ -128,9 +128,10 @@ pip install fastmcp httpx[http2] mcp nest-asyncio uvicorn
 # Copy application files
 echo ""
 echo -e "${YELLOW}📄 Step 7/9: Copying application files...${NC}"
-cp -r /tmp/openalgo_mcp/src/* /opt/openalgo-mcp/
+cp -r /tmp/openalgo_mcp/src /opt/openalgo-mcp/
 cp /tmp/openalgo_mcp/pyproject.toml /opt/openalgo-mcp/
 cp /tmp/openalgo_mcp/requirements.txt /opt/openalgo-mcp/
+cp /tmp/openalgo_mcp/README.md /opt/openalgo-mcp/
 
 # Install the package
 pip install -e .
