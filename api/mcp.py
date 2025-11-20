@@ -182,13 +182,12 @@ def get_quote(symbol: str, exchange: str = "NSE") -> str:
     except Exception as e:
         return f"Error getting quote: {str(e)}"
 
-# Vercel handler
-def handler(request):
-    """Vercel serverless function handler"""
-    # Use streamable-http transport for Vercel
-    return mcp.run(transport='streamable-http', host='0.0.0.0', port=8000)
+# Export the FastMCP app for Vercel
+# Vercel will use this as the ASGI application
+app = mcp.get_asgi_app()
 
 # For local testing
 if __name__ == "__main__":
-    print("Starting OpenAlgo MCP Server on Vercel...")
-    handler(None)
+    print("Starting OpenAlgo MCP Server...")
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
