@@ -12,17 +12,36 @@ import asyncio
 import concurrent.futures
 import threading
 from urllib.parse import urlparse
+import argparse
 
 
-# Get API key and host from command line arguments
-if len(sys.argv) < 3:
-    raise ValueError("API key and host must be provided as command line arguments")
+# Parse command line arguments
+def parse_arguments():
+    """Parse command line arguments for MCP server configuration."""
+    parser = argparse.ArgumentParser(description='OpenAlgo MCP Server')
+    parser.add_argument('api_key', help='OpenAlgo API key')
+    parser.add_argument('host', help='OpenAlgo host URL (e.g., http://127.0.0.1:5000)')
+    parser.add_argument('--transport', choices=['stdio', 'streamable-http'],
+                        default='stdio', help='Transport type (default: stdio)')
+    parser.add_argument('--http-host', default='0.0.0.0',
+                        help='HTTP host for streamable-http transport (default: 0.0.0.0)')
+    parser.add_argument('--http-port', type=int, default=8000,
+                        help='HTTP port for streamable-http transport (default: 8000)')
 
-api_key = sys.argv[1]
-host = sys.argv[2]
+    args = parser.parse_args()
+    return args
 
-print("APIKEY : ", api_key)
-print("Host   : ", host)
+# Get configuration from command line
+args = parse_arguments()
+api_key = args.api_key
+host = args.host
+
+print("APIKEY    : ", api_key)
+print("Host      : ", host)
+print("Transport : ", args.transport)
+if args.transport == 'streamable-http':
+    print(f"HTTP Host : {args.http_host}")
+    print(f"HTTP Port : {args.http_port}")
 
 # Ensure host ends with /
 if not host.endswith('/'):
@@ -288,6 +307,108 @@ def place_split_order(
         return f"Error placing split order: {str(e)}"
 
 @mcp.tool()
+def place_options_order(
+    underlying: str,
+    exchange: str,
+    expiry_date: str,
+    offset: str,
+    option_type: str,
+    action: str,
+    quantity: int,
+    strategy: str = "Python",
+    price_type: str = "MARKET",
+    product: str = "NRML",
+    price: Optional[float] = None
+) -> str:
+    """
+    Place an options order with ATM/ITM/OTM offset.
+
+    Args:
+        underlying: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
+        exchange: Exchange for underlying ('NSE_INDEX', 'BSE_INDEX')
+        expiry_date: Expiry date in format 'DDMMMYY' (e.g., '28OCT25')
+        offset: Strike offset - 'ATM', 'ITM1'-'ITM10', 'OTM1'-'OTM10'
+        option_type: 'CE' for Call or 'PE' for Put
+        action: 'BUY' or 'SELL'
+        quantity: Number of lots
+        strategy: Strategy name
+        price_type: 'MARKET', 'LIMIT', 'SL', 'SL-M'
+        product: 'NRML', 'MIS', 'CNC'
+        price: Limit price (required for LIMIT orders)
+    """
+    try:
+        data = {
+            "strategy": strategy,
+            "underlying": underlying.upper(),
+            "exchange": exchange.upper(),
+            "expiry_date": expiry_date,
+            "offset": offset.upper(),
+            "option_type": option_type.upper(),
+            "action": action.upper(),
+            "quantity": str(quantity),
+            "pricetype": price_type.upper(),
+            "product": product.upper()
+        }
+
+        if price is not None:
+            data["price"] = str(price)
+
+        response = run_async(http_client._make_request("optionsorder", data))
+        return json.dumps(response, indent=2)
+    except Exception as e:
+        return f"Error placing options order: {str(e)}"
+
+@mcp.tool()
+def place_options_multi_order(
+    strategy: str,
+    underlying: str,
+    exchange: str,
+    legs: str,
+    expiry_date: Optional[str] = None
+) -> str:
+    """
+    Place a multi-leg options order (spreads, iron condor, etc.).
+
+    Args:
+        strategy: Strategy name
+        underlying: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
+        exchange: Exchange for underlying ('NSE_INDEX', 'BSE_INDEX')
+        legs: JSON string of leg dictionaries, each containing:
+            - offset: Strike offset ('ATM', 'ITM1'-'ITM10', 'OTM1'-'OTM10')
+            - option_type: 'CE' for Call or 'PE' for Put
+            - action: 'BUY' or 'SELL'
+            - quantity: Number of lots
+            - expiry_date: (Optional) Expiry date for this leg if different from main expiry
+        expiry_date: Default expiry date in format 'DDMMMYY' (e.g., '25NOV25') for all legs
+
+    Example legs for Iron Condor (same expiry):
+        '[{"offset": "OTM6", "option_type": "CE", "action": "BUY", "quantity": 75},
+          {"offset": "OTM6", "option_type": "PE", "action": "BUY", "quantity": 75},
+          {"offset": "OTM4", "option_type": "CE", "action": "SELL", "quantity": 75},
+          {"offset": "OTM4", "option_type": "PE", "action": "SELL", "quantity": 75}]'
+
+    Example legs for Diagonal Spread (different expiry):
+        '[{"offset": "ITM2", "option_type": "CE", "action": "BUY", "quantity": 75, "expiry_date": "30DEC25"},
+          {"offset": "OTM2", "option_type": "CE", "action": "SELL", "quantity": 75, "expiry_date": "25NOV25"}]'
+    """
+    try:
+        legs_list = json.loads(legs)
+        data = {
+            "strategy": strategy,
+            "underlying": underlying.upper(),
+            "exchange": exchange.upper(),
+            "legs": legs_list
+        }
+
+        if expiry_date is not None:
+            data["expiry_date"] = expiry_date
+
+        response = run_async(http_client._make_request("optionsmultiorder", data))
+        return json.dumps(response, indent=2)
+    except Exception as e:
+        return f"Error placing options multi order: {str(e)}"
+
+@mcp.tool()
 def modify_order(
     order_id: str,
     strategy: str,
@@ -487,11 +608,37 @@ def get_funds() -> str:
     """Get account funds and margin information."""
     try:
         data = {}  # Only API key is needed
-        
+
         response = run_async(http_client._make_request("funds", data))
         return json.dumps(response, indent=2)
     except Exception as e:
         return f"Error getting funds: {str(e)}"
+
+@mcp.tool()
+def calculate_margin(positions_json: str) -> str:
+    """
+    Calculate margin requirements for positions.
+
+    Args:
+        positions_json: JSON string of position dictionaries
+        Example: '[{"symbol": "NIFTY25NOV2525000CE", "exchange": "NFO", "action": "BUY", "product": "NRML", "pricetype": "MARKET", "quantity": "75"}]'
+
+        For Futures: '[{"symbol": "NIFTY25NOV25FUT", "exchange": "NFO", "action": "BUY", "product": "NRML", "pricetype": "MARKET", "quantity": "25"}]'
+        For Options: '[{"symbol": "NIFTY25NOV2525500CE", "exchange": "NFO", "action": "BUY", "product": "NRML", "pricetype": "MARKET", "quantity": "75"}]'
+
+    Returns:
+        JSON with total_margin_required, span_margin, and exposure_margin
+    """
+    try:
+        positions = json.loads(positions_json)
+        data = {
+            "positions": positions
+        }
+
+        response = run_async(http_client._make_request("margin", data))
+        return json.dumps(response, indent=2)
+    except Exception as e:
+        return f"Error calculating margin: {str(e)}"
 
 # MARKET DATA TOOLS
 
@@ -695,11 +842,110 @@ def get_available_intervals() -> str:
     """Get all available time intervals for historical data."""
     try:
         data = {}  # Only API key is needed
-        
+
         response = run_async(http_client._make_request("intervals", data))
         return json.dumps(response, indent=2)
     except Exception as e:
         return f"Error getting intervals: {str(e)}"
+
+@mcp.tool()
+def get_option_symbol(
+    underlying: str,
+    exchange: str,
+    expiry_date: str,
+    offset: str,
+    option_type: str
+) -> str:
+    """
+    Get option symbol for specific strike and expiry.
+
+    Args:
+        underlying: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
+        exchange: Exchange for underlying ('NSE_INDEX', 'BSE_INDEX')
+        expiry_date: Expiry date in format 'DDMMMYY' (e.g., '28OCT25')
+        offset: Strike offset - 'ATM', 'ITM1'-'ITM10', 'OTM1'-'OTM10'
+        option_type: 'CE' for Call or 'PE' for Put
+
+    Returns:
+        JSON with symbol, exchange, lotsize, tick_size, underlying_ltp
+    """
+    try:
+        data = {
+            "underlying": underlying.upper(),
+            "exchange": exchange.upper(),
+            "expiry_date": expiry_date,
+            "offset": offset.upper(),
+            "option_type": option_type.upper()
+        }
+
+        response = run_async(http_client._make_request("optionsymbol", data))
+        return json.dumps(response, indent=2)
+    except Exception as e:
+        return f"Error getting option symbol: {str(e)}"
+
+@mcp.tool()
+def get_synthetic_future(
+    underlying: str,
+    exchange: str,
+    expiry_date: str
+) -> str:
+    """
+    Calculate synthetic future price using put-call parity.
+
+    Args:
+        underlying: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
+        exchange: Exchange for underlying ('NSE_INDEX', 'BSE_INDEX')
+        expiry_date: Expiry date in format 'DDMMMYY' (e.g., '25NOV25')
+
+    Returns:
+        JSON with atm_strike, expiry, status, synthetic_future_price, underlying, underlying_ltp
+    """
+    try:
+        data = {
+            "underlying": underlying.upper(),
+            "exchange": exchange.upper(),
+            "expiry_date": expiry_date
+        }
+
+        response = run_async(http_client._make_request("syntheticfuture", data))
+        return json.dumps(response, indent=2)
+    except Exception as e:
+        return f"Error calculating synthetic future: {str(e)}"
+
+@mcp.tool()
+def get_option_greeks(
+    symbol: str,
+    exchange: str,
+    underlying_symbol: str,
+    underlying_exchange: str,
+    interest_rate: float = 0.0
+) -> str:
+    """
+    Calculate option Greeks (delta, gamma, theta, vega, rho).
+
+    Args:
+        symbol: Option symbol (e.g., 'NIFTY25NOV2526000CE')
+        exchange: Exchange name (typically 'NFO')
+        underlying_symbol: Underlying symbol (e.g., 'NIFTY')
+        underlying_exchange: Underlying exchange ('NSE_INDEX')
+        interest_rate: Risk-free interest rate (default: 0.0)
+
+    Returns:
+        JSON with Greeks, IV, spot price, strike, days to expiry
+    """
+    try:
+        data = {
+            "symbol": symbol.upper(),
+            "exchange": exchange.upper(),
+            "interest_rate": str(interest_rate),
+            "underlying_symbol": underlying_symbol.upper(),
+            "underlying_exchange": underlying_exchange.upper()
+        }
+
+        response = run_async(http_client._make_request("optiongreeks", data))
+        return json.dumps(response, indent=2)
+    except Exception as e:
+        return f"Error calculating option greeks: {str(e)}"
 
 # UTILITY TOOLS
 
@@ -744,6 +990,29 @@ def validate_order_constants() -> str:
         "intervals": ["1m", "3m", "5m", "10m", "15m", "30m", "1h", "D"]
     }
     return json.dumps(constants, indent=2)
+
+@mcp.tool()
+def send_telegram_alert(username: str, message: str) -> str:
+    """
+    Send a Telegram alert notification.
+
+    Args:
+        username: OpenAlgo login ID/username
+        message: Alert message to send
+
+    Returns:
+        JSON with status and message
+    """
+    try:
+        data = {
+            "username": username,
+            "message": message
+        }
+
+        response = run_async(http_client._make_request("telegram", data))
+        return json.dumps(response, indent=2)
+    except Exception as e:
+        return f"Error sending telegram alert: {str(e)}"
 
 # ANALYZER TOOLS
 
@@ -828,7 +1097,14 @@ def main():
         print(result)
         return
 
-    mcp.run(transport='stdio')
+    # Run MCP server with configured transport
+    if args.transport == 'stdio':
+        print("\nStarting OpenAlgo MCP Server with stdio transport...")
+        mcp.run(transport='stdio')
+    elif args.transport == 'streamable-http':
+        print(f"\nStarting OpenAlgo MCP Server with streamable-http transport on {args.http_host}:{args.http_port}...")
+        print(f"Server will be accessible at: http://{args.http_host}:{args.http_port}")
+        mcp.run(transport='streamable-http', host=args.http_host, port=args.http_port)
 
 
 if __name__ == "__main__":
