@@ -87,36 +87,42 @@ uvx openalgo-mcp@latest YOUR-API-KEY http://127.0.0.1:5000 --transport streamabl
 
 Deploy OpenAlgo MCP on a VPS server (Vultr, DigitalOcean, AWS EC2, etc.) with HTTPS:
 
-#### Quick Setup
+#### One-Command Installation ⚡
 
 ```bash
-# 1. Upload deployment files from your local machine
-scp -r deploy src pyproject.toml requirements.txt root@your-server-ip:/tmp/
+# Connect to your server and run:
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/marketcalls/openalgo_mcp/main/deploy/install.sh)"
+```
 
-# 2. Connect to your server
+**Or download and run:**
+
+```bash
+# 1. Connect to your server
 ssh root@your-server-ip
 
-# 3. Run installation (will prompt for domain name)
-chmod +x /tmp/deploy/install.sh
-/tmp/deploy/install.sh
-# Enter your domain when prompted (e.g., mcp.yourdomain.com)
+# 2. Download and run installation script
+wget https://raw.githubusercontent.com/marketcalls/openalgo_mcp/main/deploy/install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
 
-# 4. Configure OpenAlgo credentials
-sudo nano /opt/openalgo-mcp/.env
+**The script will prompt you for:**
+- Domain name (e.g., mcp.yourdomain.com)
+- OpenAlgo API Key
+- OpenAlgo Host URL
 
-# 5. Copy application files
-sudo cp -r /tmp/src/* /opt/openalgo-mcp/
-cd /opt/openalgo-mcp && source venv/bin/activate && pip install -e .
+**What it does automatically:**
+1. ✅ Installs all system dependencies (Python 3.12, Nginx, Certbot)
+2. ✅ Clones the repository from GitHub
+3. ✅ Sets up Python virtual environment
+4. ✅ Configures environment variables
+5. ✅ Creates and starts systemd service
+6. ✅ Configures Nginx with your domain
+7. ✅ Sets up for SSL certificate
 
-# 6. Setup systemd service
-sudo cp /tmp/deploy/openalgo-mcp.service /etc/systemd/system/
-sudo systemctl enable --now openalgo-mcp
-
-# 7. Setup Nginx (automatically uses your domain)
-chmod +x /tmp/deploy/setup-nginx.sh
-sudo /tmp/deploy/setup-nginx.sh
-
-# 8. Get SSL certificate
+**After installation completes:**
+```bash
+# Get SSL certificate (Let's Encrypt)
 sudo certbot --nginx -d your-domain.com
 ```
 

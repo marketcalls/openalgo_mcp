@@ -2,145 +2,172 @@
 
 Complete guide to deploy OpenAlgo MCP on any VPS (Vultr, DigitalOcean, AWS EC2, etc.) with HTTPS.
 
-## Server Details
-
-- **Domain:** mcp.openalgo.in
-- **IP Address:** 65.20.70.245
-- **DNS:** Cloudflare (A record pointing to server)
-- **SSL:** Let's Encrypt certificate
-- **OS:** Ubuntu 22.04 LTS (recommended)
-
 ---
 
 ## Prerequisites
 
 1. ✅ VPS running Ubuntu 22.04+ or Debian 11+
-2. ✅ SSH access to the server (root or sudo user)
+2. ✅ Root or sudo access to the server
 3. ✅ Domain pointing to your server IP (A record)
-4. ✅ DNS configured (optional: Cloudflare)
-5. ✅ OpenAlgo instance running (locally or on another server)
+4. ✅ OpenAlgo instance running (locally or on another server)
 
 ---
 
-## Step 1: Initial Server Setup
+## One-Command Installation ⚡
 
-### Connect to your server:
+### Method 1: Direct Curl Installation (Recommended)
+
 ```bash
-ssh root@65.20.70.245
+# Connect to your server
+ssh root@your-server-ip
+
+# Run the installation script
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/marketcalls/openalgo_mcp/main/deploy/install.sh)"
 ```
 
-### Create a non-root user (recommended):
-```bash
-adduser openalgo
-usermod -aG sudo openalgo
-su - openalgo
-```
-
----
-
-## Step 2: Upload Deployment Files
-
-From your local machine, upload the files to the server:
+### Method 2: Download and Run
 
 ```bash
-# Create deployment directory locally
-cd D:\openalgo_mcp\openalgo_mcp
+# Connect to your server
+ssh root@your-server-ip
 
-# Upload to server
-scp -r deploy root@65.20.70.245:/tmp/
-scp -r src root@65.20.70.245:/tmp/
-scp pyproject.toml requirements.txt root@65.20.70.245:/tmp/
+# Download installation script
+wget https://raw.githubusercontent.com/marketcalls/openalgo_mcp/main/deploy/install.sh
+
+# Make executable
+chmod +x install.sh
+
+# Run installation
+sudo ./install.sh
 ```
 
 ---
 
-## Step 3: Run Installation Script
+## Installation Process
 
-On the server:
+The installation script will:
 
-```bash
-# Make script executable
-chmod +x /tmp/deploy/install.sh
+### 1. **Prompt for Configuration**
 
-# Run installation (it will ask for your domain name)
-/tmp/deploy/install.sh
+You'll be asked to provide:
 
-# When prompted, enter your domain name:
-# Examples:
-#   - mcp.openalgo.in
-#   - api.trading.io
-#   - openalgo.example.com
-#   - trade.yourdomain.com
+```
+Enter your domain name: mcp.yourdomain.com
+Enter your OpenAlgo API Key: your-api-key-here
+Enter your OpenAlgo Host URL: http://127.0.0.1:5000
 ```
 
-**The script will:**
-- Ask for your domain name
-- Install all dependencies
-- Create configuration files with your domain
-- Set up the application directory
+### 2. **Automatic Setup (9 Steps)**
+
+The script automatically performs:
+
+- ✅ **Step 1/9:** Updates system packages
+- ✅ **Step 2/9:** Installs Python 3.12
+- ✅ **Step 3/9:** Installs system dependencies (git, nginx, certbot)
+- ✅ **Step 4/9:** Clones OpenAlgo MCP repository from GitHub
+- ✅ **Step 5/9:** Creates application directory
+- ✅ **Step 6/9:** Sets up Python virtual environment
+- ✅ **Step 7/9:** Copies application files
+- ✅ **Step 8/9:** Creates environment configuration
+- ✅ **Step 9/9:** Configures and starts systemd service
+
+### 3. **Automatic Nginx Configuration**
+
+- Creates Nginx configuration with your domain
+- Sets up reverse proxy to port 8000
+- Configures for SSL certificate setup
+- Removes default Nginx site
+
+### 4. **Service Verification**
+
+- Starts OpenAlgo MCP service
+- Verifies service is running
+- Provides status feedback
 
 ---
 
-## Step 4: Configure Environment Variables
+## Post-Installation: SSL Certificate
 
-Edit the environment file:
+After installation completes successfully, run this command to get a free SSL certificate:
 
 ```bash
-sudo nano /opt/openalgo-mcp/.env
+sudo certbot --nginx -d your-domain.com
 ```
 
-Update with your credentials:
+**Certbot will:**
+- Obtain a Let's Encrypt SSL certificate
+- Automatically configure Nginx for HTTPS
+- Set up auto-renewal
+
+**Example:**
 ```bash
-OPENALGO_API_KEY=your-actual-api-key-here
-OPENALGO_HOST=https://your-openalgo-instance.com
-HTTP_HOST=127.0.0.1
-HTTP_PORT=8000
+sudo certbot --nginx -d mcp.openalgo.in
 ```
 
-Save and exit (Ctrl+X, Y, Enter)
+Follow the prompts:
+1. Enter your email address
+2. Agree to terms of service
+3. Choose whether to redirect HTTP to HTTPS (recommended: yes)
 
 ---
 
-## Step 5: Copy Application Files
+## DNS Configuration
+
+Before installation, ensure your DNS is configured correctly:
+
+### Cloudflare Example
+
+```
+Type: A
+Name: mcp (or @ for root domain)
+IPv4 address: your-server-ip
+Proxy status: DNS only (grey cloud) - Important for SSL setup!
+TTL: Auto
+```
+
+### After SSL is Working
+
+1. Enable Cloudflare proxy (orange cloud) for DDoS protection
+2. Set SSL/TLS mode to **"Full (strict)"**
+
+### Verify DNS Propagation
 
 ```bash
-# Copy source files
-sudo cp -r /tmp/src/* /opt/openalgo-mcp/
-sudo cp /tmp/pyproject.toml /opt/openalgo-mcp/
-sudo cp /tmp/requirements.txt /opt/openalgo-mcp/
+# Check if domain resolves
+nslookup your-domain.com
 
-# Set permissions
-sudo chown -R www-data:www-data /opt/openalgo-mcp
+# Alternative
+dig your-domain.com +short
 ```
 
 ---
 
-## Step 6: Install Python Dependencies
+## Verification
+
+After installation, test your deployment:
+
+### 1. Test Local Connection
 
 ```bash
-cd /opt/openalgo-mcp
-source venv/bin/activate
-pip install -e .
+curl http://localhost:8000
 ```
 
----
-
-## Step 7: Setup Systemd Service
+### 2. Test Domain (HTTP)
 
 ```bash
-# Copy service file
-sudo cp /tmp/deploy/openalgo-mcp.service /etc/systemd/system/
+curl http://your-domain.com
+```
 
-# Reload systemd
-sudo systemctl daemon-reload
+### 3. Test Domain (HTTPS - after certbot)
 
-# Enable service
-sudo systemctl enable openalgo-mcp
+```bash
+curl https://your-domain.com
+curl https://your-domain.com/health
+```
 
-# Start service
-sudo systemctl start openalgo-mcp
+### 4. Check Service Status
 
-# Check status
+```bash
 sudo systemctl status openalgo-mcp
 ```
 
@@ -153,132 +180,86 @@ Expected output:
 
 ---
 
-## Step 8: Configure Nginx
+## Configuration Files
 
-The installation created a setup script that automatically configures Nginx with your domain:
+The installation creates these files:
+
+| File | Location | Purpose |
+|------|----------|---------|
+| Environment | `/opt/openalgo-mcp/.env` | API keys and configuration |
+| Domain | `/opt/openalgo-mcp/.domain` | Saved domain name |
+| Service | `/etc/systemd/system/openalgo-mcp.service` | Systemd service config |
+| Nginx | `/etc/nginx/sites-available/your-domain.com` | Nginx configuration |
+| Application | `/opt/openalgo-mcp/` | Application files |
+
+---
+
+## Management Commands
+
+### Service Management
 
 ```bash
-# Make setup script executable
-chmod +x /tmp/deploy/setup-nginx.sh
+# Check status
+sudo systemctl status openalgo-mcp
 
-# Run Nginx setup (uses domain from installation)
-sudo /tmp/deploy/setup-nginx.sh
+# Restart service
+sudo systemctl restart openalgo-mcp
+
+# Stop service
+sudo systemctl stop openalgo-mcp
+
+# Start service
+sudo systemctl start openalgo-mcp
+
+# View logs
+sudo journalctl -u openalgo-mcp -f
+
+# View last 50 lines
+sudo journalctl -u openalgo-mcp -n 50 --no-pager
 ```
 
-**The script will:**
-- Read your domain from the installation config
-- Create Nginx configuration for your specific domain
-- Enable the site
-- Test and reload Nginx
+### Nginx Management
 
-**Manual setup (alternative):**
 ```bash
-# Read your domain
-DOMAIN=$(cat /opt/openalgo-mcp/.domain)
-
-# Copy and configure
-sudo cp /tmp/deploy/nginx-mcp.conf /etc/nginx/sites-available/$DOMAIN
-sudo sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" /etc/nginx/sites-available/$DOMAIN
-sudo ln -s /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/
+# Test configuration
 sudo nginx -t
+
+# Reload Nginx
 sudo systemctl reload nginx
+
+# Restart Nginx
+sudo systemctl restart nginx
+
+# Check status
+sudo systemctl status nginx
 ```
 
----
-
-## Step 9: Cloudflare DNS Configuration
-
-In your Cloudflare dashboard (cloudflare.com):
-
-1. Go to your domain's DNS settings
-2. Verify the A record exists:
-   - **Type:** A
-   - **Name:** mcp
-   - **IPv4 address:** 65.20.70.245
-   - **Proxy status:** DNS only (click the cloud to make it grey)
-   - **TTL:** Auto
-
-**Important:** Set proxy to "DNS only" (grey cloud) initially for Let's Encrypt to work.
-
----
-
-## Step 10: Setup Let's Encrypt SSL
-
-### Option A: Using Certbot (Recommended)
+### SSL Certificate Management
 
 ```bash
-# Install certbot
-sudo apt install -y certbot python3-certbot-nginx
+# List certificates
+sudo certbot certificates
 
-# Get certificate
-sudo certbot --nginx -d mcp.openalgo.in
+# Renew certificates (manually)
+sudo certbot renew
 
-# Follow the prompts:
-# - Enter email address
-# - Agree to terms
-# - Choose to redirect HTTP to HTTPS (option 2)
-```
-
-### Test auto-renewal:
-```bash
+# Test auto-renewal
 sudo certbot renew --dry-run
 ```
 
 ---
 
-## Step 11: Enable Cloudflare Proxy (Optional)
+## MCP Client Configuration
 
-After SSL is working:
+After deployment with SSL, configure your MCP client:
 
-1. Go to Cloudflare DNS
-2. Click the cloud next to your A record to enable proxy (orange cloud)
-3. This enables Cloudflare's CDN and DDoS protection
+### For Claude Desktop
 
-### Configure Cloudflare SSL Mode:
-
-1. Go to SSL/TLS settings in Cloudflare
-2. Set to **"Full (strict)"** mode
-3. This ensures end-to-end encryption
-
----
-
-## Step 12: Test Deployment
-
-### Test locally on server:
-```bash
-curl http://localhost:8000
-curl http://127.0.0.1:8000
-```
-
-### Test via domain:
-```bash
-curl https://mcp.openalgo.in
-curl https://mcp.openalgo.in/health
-```
-
-### Test MCP endpoints:
-```bash
-# SSE endpoint
-curl https://mcp.openalgo.in/sse
-
-# Ping
-curl -X POST https://mcp.openalgo.in/messages \
-  -H "Content-Type: application/json" \
-  -d '{"method": "ping_api"}'
-```
-
----
-
-## Step 13: Configure MCP Client
-
-Update your MCP client configuration:
-
-### For Claude Desktop:
 ```json
 {
   "mcpServers": {
     "openalgo": {
-      "url": "https://mcp.openalgo.in",
+      "url": "https://your-domain.com",
       "transport": {
         "type": "sse"
       }
@@ -287,53 +268,107 @@ Update your MCP client configuration:
 }
 ```
 
-### For Cline / VSCode:
+### For Cline / VSCode
+
 ```json
 {
   "openalgo": {
     "disabled": false,
     "timeout": 60,
     "type": "http",
-    "url": "https://mcp.openalgo.in"
+    "url": "https://your-domain.com"
   }
 }
 ```
 
 ---
 
-## Monitoring & Maintenance
+## Updating the Application
 
-### View logs:
+To update OpenAlgo MCP to the latest version:
+
 ```bash
-# Application logs
-sudo journalctl -u openalgo-mcp -f
+# Pull latest code
+cd /tmp
+rm -rf openalgo_mcp
+git clone https://github.com/marketcalls/openalgo_mcp.git
 
-# Nginx access logs
-sudo tail -f /var/log/nginx/mcp.openalgo.in-access.log
+# Copy updated files
+sudo cp -r openalgo_mcp/src/* /opt/openalgo-mcp/
+sudo cp openalgo_mcp/pyproject.toml /opt/openalgo-mcp/
+sudo cp openalgo_mcp/requirements.txt /opt/openalgo-mcp/
 
-# Nginx error logs
-sudo tail -f /var/log/nginx/mcp.openalgo.in-error.log
-```
-
-### Service management:
-```bash
-# Restart service
-sudo systemctl restart openalgo-mcp
-
-# Stop service
-sudo systemctl stop openalgo-mcp
-
-# Check status
-sudo systemctl status openalgo-mcp
-```
-
-### Update application:
-```bash
+# Reinstall
 cd /opt/openalgo-mcp
-git pull  # if using git
 source venv/bin/activate
 pip install -e .
+
+# Restart service
 sudo systemctl restart openalgo-mcp
+```
+
+---
+
+## Troubleshooting
+
+### Service won't start
+
+```bash
+# Check logs
+sudo journalctl -u openalgo-mcp -n 50 --no-pager
+
+# Check if port is in use
+sudo netstat -tulpn | grep 8000
+
+# Verify environment variables
+cat /opt/openalgo-mcp/.env
+```
+
+### SSL certificate fails
+
+**Problem:** Certbot cannot verify domain
+
+**Solution:**
+```bash
+# 1. Verify DNS points to server
+nslookup your-domain.com
+
+# 2. If using Cloudflare, disable proxy (grey cloud)
+
+# 3. Wait 5 minutes for DNS propagation
+
+# 4. Try certbot again
+sudo certbot --nginx -d your-domain.com
+
+# 5. After SSL works, re-enable Cloudflare proxy
+```
+
+### Connection refused
+
+```bash
+# Check if service is running
+sudo systemctl status openalgo-mcp
+
+# Check nginx
+sudo systemctl status nginx
+
+# Test local connection
+curl http://localhost:8000
+
+# Check firewall
+sudo ufw status
+```
+
+### Domain doesn't resolve
+
+```bash
+# Check DNS propagation
+nslookup your-domain.com
+
+# Check from different DNS
+dig @8.8.8.8 your-domain.com
+
+# Wait for DNS propagation (5-30 minutes)
 ```
 
 ---
@@ -344,7 +379,7 @@ sudo systemctl restart openalgo-mcp
 # Install UFW
 sudo apt install -y ufw
 
-# Allow SSH
+# Allow SSH (important - do this first!)
 sudo ufw allow 22/tcp
 
 # Allow HTTP & HTTPS
@@ -360,62 +395,23 @@ sudo ufw status
 
 ---
 
-## Troubleshooting
-
-### Service won't start:
-```bash
-# Check logs
-sudo journalctl -u openalgo-mcp -n 50 --no-pager
-
-# Check if port is in use
-sudo netstat -tulpn | grep 8000
-
-# Verify environment variables
-cat /opt/openalgo-mcp/.env
-```
-
-### SSL certificate issues:
-```bash
-# Test certificate
-sudo certbot certificates
-
-# Renew manually
-sudo certbot renew
-
-# Check nginx config
-sudo nginx -t
-```
-
-### Connection refused:
-```bash
-# Check if service is running
-sudo systemctl status openalgo-mcp
-
-# Check nginx
-sudo systemctl status nginx
-
-# Test local connection
-curl http://localhost:8000
-```
-
----
-
 ## Security Best Practices
 
-1. ✅ Keep system updated: `sudo apt update && sudo apt upgrade`
-2. ✅ Use strong passwords
-3. ✅ Enable SSH key authentication
-4. ✅ Disable root SSH login
-5. ✅ Enable UFW firewall
-6. ✅ Regular backups
-7. ✅ Monitor logs for suspicious activity
+1. ✅ Use strong API keys
+2. ✅ Enable UFW firewall
+3. ✅ Keep system updated: `sudo apt update && sudo apt upgrade`
+4. ✅ Use SSH key authentication
+5. ✅ Disable root SSH login (after setting up sudo user)
+6. ✅ Monitor logs regularly
+7. ✅ Enable Cloudflare proxy after SSL setup
 8. ✅ Rotate API keys periodically
 
 ---
 
 ## Backup & Recovery
 
-### Backup important files:
+### Backup Important Files
+
 ```bash
 # Create backup directory
 mkdir -p ~/backups
@@ -423,8 +419,9 @@ mkdir -p ~/backups
 # Backup application
 sudo tar -czf ~/backups/openalgo-mcp-$(date +%Y%m%d).tar.gz /opt/openalgo-mcp
 
-# Backup nginx config
-sudo tar -czf ~/backups/nginx-config-$(date +%Y%m%d).tar.gz /etc/nginx/sites-available/mcp.openalgo.in
+# Backup Nginx config
+DOMAIN=$(cat /opt/openalgo-mcp/.domain)
+sudo tar -czf ~/backups/nginx-config-$(date +%Y%m%d).tar.gz /etc/nginx/sites-available/$DOMAIN
 
 # Backup SSL certificates
 sudo tar -czf ~/backups/ssl-certs-$(date +%Y%m%d).tar.gz /etc/letsencrypt
@@ -432,34 +429,29 @@ sudo tar -czf ~/backups/ssl-certs-$(date +%Y%m%d).tar.gz /etc/letsencrypt
 
 ---
 
-## Performance Tuning
+## Installation Time
 
-### For high-traffic deployments:
-
-1. **Increase worker processes:**
-   Edit `/opt/openalgo-mcp/deploy/openalgo-mcp.service`:
-   ```ini
-   ExecStart=/opt/openalgo-mcp/venv/bin/uvicorn openalgo_mcp.mcpserver:app --host 127.0.0.1 --port 8000 --workers 4
-   ```
-
-2. **Enable Nginx caching**
-3. **Use Cloudflare caching rules**
-4. **Monitor with tools like Prometheus + Grafana**
+Expected installation time on a standard VPS:
+- **System updates:** 2-5 minutes
+- **Dependency installation:** 3-5 minutes
+- **Application setup:** 2-3 minutes
+- **Total:** ~10-15 minutes
 
 ---
 
 ## Success Checklist
 
+After installation, verify:
+
 - ✅ Server accessible via SSH
-- ✅ Python 3.12 installed
-- ✅ Application running (`systemctl status openalgo-mcp`)
+- ✅ Service running: `systemctl status openalgo-mcp`
 - ✅ Nginx configured and running
-- ✅ SSL certificate installed
 - ✅ Domain resolves to server IP
-- ✅ HTTPS working (https://mcp.openalgo.in)
-- ✅ MCP endpoints responding
-- ✅ Cloudflare proxy enabled (optional)
+- ✅ HTTP working: `curl http://your-domain.com`
+- ✅ SSL certificate installed (after certbot)
+- ✅ HTTPS working: `curl https://your-domain.com`
 - ✅ Logs showing no errors
+- ✅ MCP client can connect
 
 ---
 
@@ -467,10 +459,42 @@ sudo tar -czf ~/backups/ssl-certs-$(date +%Y%m%d).tar.gz /etc/letsencrypt
 
 If you encounter issues:
 
-1. Check logs: `sudo journalctl -u openalgo-mcp -f`
-2. Verify configuration files
-3. Test each component individually
-4. Check Cloudflare DNS settings
-5. Verify firewall rules
+1. **Check logs:** `sudo journalctl -u openalgo-mcp -f`
+2. **Verify DNS:** `nslookup your-domain.com`
+3. **Test locally:** `curl http://localhost:8000`
+4. **Check firewall:** `sudo ufw status`
+5. **Review configuration:** `cat /opt/openalgo-mcp/.env`
+
+---
+
+## Complete Installation Example
+
+Here's what a successful installation looks like:
+
+```bash
+# 1. Connect to server
+ssh root@65.20.70.245
+
+# 2. Run installation
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/marketcalls/openalgo_mcp/main/deploy/install.sh)"
+
+# Enter domain: mcp.openalgo.in
+# Enter API key: your-api-key
+# Enter host: http://127.0.0.1:5000
+# Confirm: y
+
+# ... installation runs automatically ...
+
+# ✅ Installation Complete!
+# Service is running on http://mcp.openalgo.in
+
+# 3. Setup SSL
+sudo certbot --nginx -d mcp.openalgo.in
+
+# ✅ SSL certificate obtained!
+# Now available at: https://mcp.openalgo.in
+```
+
+---
 
 **Your OpenAlgo MCP Server is now production-ready!** 🎉
