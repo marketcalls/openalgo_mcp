@@ -76,11 +76,25 @@ apt upgrade -y
 
 # Install Python 3.12+
 echo ""
-echo -e "${YELLOW}🐍 Step 2/9: Installing Python 3.12...${NC}"
-apt install -y software-properties-common
-add-apt-repository ppa:deadsnakes/ppa -y
-apt update
-apt install -y python3.12 python3.12-venv python3.12-dev python3-pip
+echo -e "${YELLOW}🐍 Step 2/9: Installing Python 3.12+...${NC}"
+
+# Check if Python 3.12+ is already installed
+PYTHON_VERSION=$(python3 --version 2>/dev/null | grep -oP '(?<=Python )\d+\.\d+' || echo "0.0")
+PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
+PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
+
+if [ "$PYTHON_MAJOR" -ge 3 ] && [ "$PYTHON_MINOR" -ge 12 ]; then
+    echo -e "${GREEN}✅ Python $PYTHON_VERSION already installed${NC}"
+    apt install -y python3-venv python3-dev python3-pip
+    PYTHON_CMD=python3
+else
+    echo "Installing Python 3.12 from deadsnakes PPA..."
+    apt install -y software-properties-common
+    add-apt-repository ppa:deadsnakes/ppa -y
+    apt update
+    apt install -y python3.12 python3.12-venv python3.12-dev python3-pip
+    PYTHON_CMD=python3.12
+fi
 
 # Install system dependencies
 echo ""
@@ -106,7 +120,7 @@ cd /opt/openalgo-mcp
 # Create virtual environment and install dependencies
 echo ""
 echo -e "${YELLOW}🔧 Step 6/9: Creating Python environment and installing dependencies...${NC}"
-python3.12 -m venv venv
+$PYTHON_CMD -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install fastmcp httpx[http2] mcp nest-asyncio uvicorn
