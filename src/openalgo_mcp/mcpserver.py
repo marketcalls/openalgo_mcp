@@ -950,6 +950,22 @@ def get_option_greeks(
 # UTILITY TOOLS
 
 @mcp.tool()
+def ping_api() -> str:
+    """
+    Ping the OpenAlgo API to check connectivity and status.
+
+    Returns:
+        JSON with API status and version information
+    """
+    try:
+        data = {}  # Only API key is needed
+
+        response = run_async(http_client._make_request("ping", data))
+        return json.dumps(response, indent=2)
+    except Exception as e:
+        return f"Error pinging API: {str(e)}"
+
+@mcp.tool()
 def get_openalgo_version() -> str:
     """Get the OpenAlgo API version information."""
     return json.dumps({
@@ -992,13 +1008,14 @@ def validate_order_constants() -> str:
     return json.dumps(constants, indent=2)
 
 @mcp.tool()
-def send_telegram_alert(username: str, message: str) -> str:
+def send_telegram_alert(username: str, message: str, priority: int = 5) -> str:
     """
     Send a Telegram alert notification.
 
     Args:
         username: OpenAlgo login ID/username
         message: Alert message to send
+        priority: Alert priority level (1-10, default: 5)
 
     Returns:
         JSON with status and message
@@ -1006,10 +1023,11 @@ def send_telegram_alert(username: str, message: str) -> str:
     try:
         data = {
             "username": username,
-            "message": message
+            "message": message,
+            "priority": priority
         }
 
-        response = run_async(http_client._make_request("telegram", data))
+        response = run_async(http_client._make_request("telegram/notify", data))
         return json.dumps(response, indent=2)
     except Exception as e:
         return f"Error sending telegram alert: {str(e)}"

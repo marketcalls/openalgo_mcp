@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "name": "openalgo-mcp",
+  "builds": [
+    {
+      "src": "api/mcp.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/mcp.py"
+    }
+  ],
+  "env": {
+    "OPENALGO_API_KEY": "@openalgo-api-key",
+    "OPENALGO_HOST": "@openalgo-host"
+  },
+  "functions": {
+    "api/mcp.py": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  }
+}

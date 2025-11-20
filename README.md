@@ -1,5 +1,3 @@
-This is an MCP server for OpenAlgo - (logic is copied from https://github.com/marketcalls/openalgo )
-
 It has been repackaged for use as a module without necessity of cloning repos and installing python script.
 
 Requirements:
@@ -84,6 +82,38 @@ uvx openalgo-mcp@latest YOUR-API-KEY http://127.0.0.1:5000 --transport streamabl
 ```bash
 uvx openalgo-mcp@latest YOUR-API-KEY http://127.0.0.1:5000 --transport streamable-http --http-host 127.0.0.1 --http-port 9000
 ```
+
+### Option 3: Deploy to Vercel (Cloud Hosting)
+
+Deploy OpenAlgo MCP to Vercel for cloud-hosted access:
+
+#### Quick Deploy
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyour-repo%2Fopenalgo-mcp)
+
+#### Manual Deploy
+
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Login
+vercel login
+
+# Set environment variables
+vercel env add OPENALGO_API_KEY
+vercel env add OPENALGO_HOST
+
+# Deploy
+vercel
+```
+
+#### Important Notes
+- ⚠️ **OpenAlgo must be publicly accessible** (not localhost)
+- Use tunnel services (Ngrok, Cloudflare Tunnel) if OpenAlgo runs locally
+- Vercel functions have 60s timeout (Hobby) / 300s (Pro)
+
+📖 **Full deployment guide:** See [VERCEL_DEPLOY.md](./VERCEL_DEPLOY.md)
 
 ---
 
