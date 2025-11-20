@@ -70,13 +70,13 @@ echo -e "${GREEN}Starting complete installation...${NC}"
 echo ""
 
 # Update system
-echo -e "${YELLOW}📦 Step 1/9: Updating system packages...${NC}"
+echo -e "${YELLOW}📦 Step 1/10: Updating system packages...${NC}"
 apt update
 apt upgrade -y
 
 # Install Python 3.12+
 echo ""
-echo -e "${YELLOW}🐍 Step 2/9: Installing Python 3.12+...${NC}"
+echo -e "${YELLOW}🐍 Step 2/10: Installing Python 3.12+...${NC}"
 
 # Check if Python 3.12+ is already installed
 PYTHON_VERSION=$(python3 --version 2>/dev/null | grep -oP '(?<=Python )\d+\.\d+' || echo "0.0")
@@ -98,12 +98,12 @@ fi
 
 # Install system dependencies
 echo ""
-echo -e "${YELLOW}📦 Step 3/9: Installing system dependencies...${NC}"
-apt install -y build-essential git curl nginx certbot python3-certbot-nginx
+echo -e "${YELLOW}📦 Step 3/10: Installing system dependencies...${NC}"
+apt install -y build-essential git curl nginx certbot python3-certbot-nginx dnsutils
 
 # Clone repository
 echo ""
-echo -e "${YELLOW}📥 Step 4/9: Cloning OpenAlgo MCP repository...${NC}"
+echo -e "${YELLOW}📥 Step 4/10: Cloning OpenAlgo MCP repository...${NC}"
 cd /tmp
 if [ -d "openalgo_mcp" ]; then
     rm -rf openalgo_mcp
@@ -113,13 +113,13 @@ cd openalgo_mcp
 
 # Create application directory
 echo ""
-echo -e "${YELLOW}📁 Step 5/9: Setting up application directory...${NC}"
+echo -e "${YELLOW}📁 Step 5/10: Setting up application directory...${NC}"
 mkdir -p /opt/openalgo-mcp
 cd /opt/openalgo-mcp
 
 # Create virtual environment and install dependencies
 echo ""
-echo -e "${YELLOW}🔧 Step 6/9: Creating Python environment and installing dependencies...${NC}"
+echo -e "${YELLOW}🔧 Step 6/10: Creating Python environment and installing dependencies...${NC}"
 $PYTHON_CMD -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
@@ -127,7 +127,7 @@ pip install fastmcp httpx[http2] mcp nest-asyncio uvicorn
 
 # Copy application files
 echo ""
-echo -e "${YELLOW}📄 Step 7/9: Copying application files...${NC}"
+echo -e "${YELLOW}📄 Step 7/10: Copying application files...${NC}"
 
 # Check if nested structure exists
 if [ -d "/tmp/openalgo_mcp/openalgo_mcp" ]; then
@@ -151,7 +151,7 @@ pip install -e .
 
 # Create environment file
 echo ""
-echo -e "${YELLOW}⚙️  Step 8/9: Creating environment configuration...${NC}"
+echo -e "${YELLOW}⚙️  Step 8/10: Creating environment configuration...${NC}"
 cat > /opt/openalgo-mcp/.env << EOF
 OPENALGO_API_KEY=$OPENALGO_API_KEY
 OPENALGO_HOST=$OPENALGO_HOST
@@ -168,7 +168,7 @@ chown -R www-data:www-data /opt/openalgo-mcp
 
 # Setup systemd service
 echo ""
-echo -e "${YELLOW}🔄 Step 9/9: Setting up systemd service...${NC}"
+echo -e "${YELLOW}🔄 Step 9/10: Setting up systemd service...${NC}"
 cat > /etc/systemd/system/openalgo-mcp.service << 'EOF'
 [Unit]
 Description=OpenAlgo MCP Server
@@ -253,6 +253,65 @@ nginx -t
 systemctl reload nginx
 
 echo ""
+echo -e "${GREEN}✅ Nginx configured successfully!${NC}"
+
+# SSL Certificate Setup
+echo ""
+echo -e "${YELLOW}🔐 Step 10: SSL Certificate Setup${NC}"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# Check DNS resolution
+echo "Checking DNS resolution for $DOMAIN_NAME..."
+RESOLVED_IP=$(dig +short $DOMAIN_NAME @8.8.8.8 | tail -n1)
+SERVER_IP=$(curl -s ifconfig.me)
+
+if [ -z "$RESOLVED_IP" ]; then
+    echo -e "${YELLOW}⚠️  DNS not configured yet${NC}"
+    echo ""
+    echo "Please configure your DNS A record:"
+    echo "  Domain: $DOMAIN_NAME"
+    echo "  Points to: $SERVER_IP"
+    echo ""
+    echo "After DNS is configured, run:"
+    echo "  sudo certbot --nginx -d $DOMAIN_NAME"
+    SSL_SKIP=true
+elif [ "$RESOLVED_IP" != "$SERVER_IP" ]; then
+    echo -e "${YELLOW}⚠️  DNS points to different IP${NC}"
+    echo "  Domain resolves to: $RESOLVED_IP"
+    echo "  This server IP: $SERVER_IP"
+    echo ""
+    echo "After fixing DNS, run:"
+    echo "  sudo certbot --nginx -d $DOMAIN_NAME"
+    SSL_SKIP=true
+else
+    echo -e "${GREEN}✅ DNS correctly configured ($RESOLVED_IP)${NC}"
+    echo ""
+
+    # Ask for email for Let's Encrypt
+    read -p "Enter your email for Let's Encrypt certificate notifications: " LETSENCRYPT_EMAIL
+
+    if [ -z "$LETSENCRYPT_EMAIL" ]; then
+        echo -e "${YELLOW}⚠️  Email required for SSL certificate${NC}"
+        echo "Run manually: sudo certbot --nginx -d $DOMAIN_NAME"
+        SSL_SKIP=true
+    else
+        echo ""
+        echo "Obtaining SSL certificate from Let's Encrypt..."
+
+        # Run certbot non-interactively
+        if certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos --email $LETSENCRYPT_EMAIL --redirect; then
+            echo -e "${GREEN}✅ SSL certificate obtained successfully!${NC}"
+            SSL_SUCCESS=true
+        else
+            echo -e "${RED}❌ Failed to obtain SSL certificate${NC}"
+            echo "You can try manually: sudo certbot --nginx -d $DOMAIN_NAME"
+            SSL_SKIP=true
+        fi
+    fi
+fi
+
+echo ""
 echo -e "${GREEN}✅ Installation Complete!${NC}"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -262,39 +321,69 @@ echo ""
 echo "📋 Installation Details:"
 echo "   • Domain: $DOMAIN_NAME"
 echo "   • Service: openalgo-mcp (running)"
-echo "   • HTTP: http://$DOMAIN_NAME"
+if [ "$SSL_SUCCESS" = true ]; then
+    echo "   • HTTPS: https://$DOMAIN_NAME (SSL enabled ✅)"
+    echo "   • HTTP: Redirects to HTTPS"
+else
+    echo "   • HTTP: http://$DOMAIN_NAME"
+fi
 echo "   • Application Path: /opt/openalgo-mcp"
 echo ""
-echo "🔐 Next Step - SSL Certificate:"
-echo "   Run the following command to enable HTTPS:"
-echo ""
-echo -e "   ${YELLOW}sudo certbot --nginx -d $DOMAIN_NAME${NC}"
-echo ""
-echo "   This will:"
-echo "   • Obtain a free Let's Encrypt SSL certificate"
-echo "   • Automatically configure HTTPS"
-echo "   • Set up auto-renewal"
-echo ""
+
+if [ "$SSL_SKIP" = true ]; then
+    echo "🔐 SSL Certificate Setup:"
+    echo "   Run the following command to enable HTTPS:"
+    echo ""
+    echo -e "   ${YELLOW}sudo certbot --nginx -d $DOMAIN_NAME${NC}"
+    echo ""
+    echo "   This will:"
+    echo "   • Obtain a free Let's Encrypt SSL certificate"
+    echo "   • Automatically configure HTTPS"
+    echo "   • Set up auto-renewal"
+    echo ""
+fi
 echo "📖 Useful Commands:"
 echo "   • Check service status: systemctl status openalgo-mcp"
 echo "   • View logs: journalctl -u openalgo-mcp -f"
 echo "   • Restart service: systemctl restart openalgo-mcp"
-echo "   • Test API: curl http://localhost:8000"
+if [ "$SSL_SUCCESS" = true ]; then
+    echo "   • Test API: curl https://localhost:8000"
+else
+    echo "   • Test API: curl http://localhost:8000"
+fi
 echo ""
-echo "🌐 DNS Configuration:"
-echo "   Make sure your DNS A record points to this server:"
-echo "   Type: A"
-echo "   Name: ${DOMAIN_NAME%%.*} (or @ for root domain)"
-echo "   Value: $(curl -s ifconfig.me)"
-echo "   TTL: Auto"
-echo ""
-echo "☁️  If using Cloudflare:"
-echo "   • Set proxy to 'DNS only' (grey cloud) before running certbot"
-echo "   • After SSL is working, you can enable proxy (orange cloud)"
-echo "   • Set SSL/TLS mode to 'Full (strict)'"
-echo ""
+
+if [ "$SSL_SKIP" = true ]; then
+    echo "🌐 DNS Configuration:"
+    echo "   Make sure your DNS A record points to this server:"
+    echo "   Type: A"
+    echo "   Name: ${DOMAIN_NAME%%.*} (or @ for root domain)"
+    echo "   Value: $SERVER_IP"
+    echo "   TTL: Auto"
+    echo ""
+fi
+
+if [ "$SSL_SUCCESS" = true ]; then
+    echo "☁️  Cloudflare (Optional):"
+    echo "   • You can now enable Cloudflare proxy (orange cloud)"
+    echo "   • Set SSL/TLS mode to 'Full (strict)'"
+    echo ""
+    echo "🔒 SSL Certificate:"
+    echo "   • Auto-renewal configured ✅"
+    echo "   • Certificate expires: $(date -d '+90 days' '+%Y-%m-%d')"
+    echo "   • View certificates: sudo certbot certificates"
+    echo ""
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo -e "${GREEN}Installation script completed successfully!${NC}"
-echo -e "Ready to obtain SSL certificate with: ${YELLOW}sudo certbot --nginx -d $DOMAIN_NAME${NC}"
+if [ "$SSL_SUCCESS" = true ]; then
+    echo -e "${GREEN}✅ Installation completed successfully with HTTPS enabled!${NC}"
+    echo -e "Your OpenAlgo MCP server is live at: ${GREEN}https://$DOMAIN_NAME${NC}"
+else
+    echo -e "${GREEN}Installation script completed successfully!${NC}"
+    if [ "$SSL_SKIP" = true ]; then
+        echo -e "After DNS is configured, enable HTTPS with: ${YELLOW}sudo certbot --nginx -d $DOMAIN_NAME${NC}"
+    fi
+fi
 echo ""
