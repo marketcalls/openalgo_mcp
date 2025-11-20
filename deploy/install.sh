@@ -205,14 +205,13 @@ else
     exit 1
 fi
 
-# Configure Nginx
+# Configure Nginx (Initial HTTP-only config for certbot)
 echo ""
 echo -e "${YELLOW}🌐 Configuring Nginx...${NC}"
 cat > /etc/nginx/sites-available/$DOMAIN_NAME << 'NGINX_EOF'
-# OpenAlgo MCP - Nginx Configuration
+# OpenAlgo MCP - Nginx Configuration (Temporary HTTP-only)
 # Domain: DOMAIN_PLACEHOLDER
 
-# HTTP - Redirect to HTTPS (or serve initially)
 server {
     listen 80;
     listen [::]:80;
@@ -223,7 +222,7 @@ server {
         root /var/www/html;
     }
 
-    # Initially proxy to backend (before SSL)
+    # Proxy to backend
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
@@ -302,6 +301,140 @@ else
         # Run certbot non-interactively
         if certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos --email $LETSENCRYPT_EMAIL --redirect; then
             echo -e "${GREEN}✅ SSL certificate obtained successfully!${NC}"
+
+            # Apply production Nginx config with proper SSL settings
+            echo "Applying production Nginx configuration..."
+
+            cat > /etc/nginx/sites-available/$DOMAIN_NAME << 'NGINX_PROD_EOF'
+# OpenAlgo MCP - Nginx Production Configuration
+# Domain: DOMAIN_PLACEHOLDER
+
+# HTTP - Redirect to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name DOMAIN_PLACEHOLDER;
+
+    # Let's Encrypt challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    # Redirect all other traffic to HTTPS
+    location / {
+        return 301 https://$server_name$request_uri;
+    }
+}
+
+# HTTPS - Main server block
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name DOMAIN_PLACEHOLDER;
+
+    # SSL Certificate
+    ssl_certificate /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem;
+
+    # SSL Configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+
+    # SSL Session
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_session_tickets off;
+
+    # OCSP Stapling
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    ssl_trusted_certificate /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/chain.pem;
+    resolver 8.8.8.8 8.8.4.4 valid=300s;
+    resolver_timeout 5s;
+
+    # Security Headers
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+
+    # Cloudflare Real IP
+    set_real_ip_from 173.245.48.0/20;
+    set_real_ip_from 103.21.244.0/22;
+    set_real_ip_from 103.22.200.0/22;
+    set_real_ip_from 103.31.4.0/22;
+    set_real_ip_from 141.101.64.0/18;
+    set_real_ip_from 108.162.192.0/18;
+    set_real_ip_from 190.93.240.0/20;
+    set_real_ip_from 188.114.96.0/20;
+    set_real_ip_from 197.234.240.0/22;
+    set_real_ip_from 198.41.128.0/17;
+    set_real_ip_from 162.158.0.0/15;
+    set_real_ip_from 104.16.0.0/13;
+    set_real_ip_from 104.24.0.0/14;
+    set_real_ip_from 172.64.0.0/13;
+    set_real_ip_from 131.0.72.0/22;
+    set_real_ip_from 2400:cb00::/32;
+    set_real_ip_from 2606:4700::/32;
+    set_real_ip_from 2803:f800::/32;
+    set_real_ip_from 2405:b500::/32;
+    set_real_ip_from 2405:8100::/32;
+    set_real_ip_from 2a06:98c0::/29;
+    set_real_ip_from 2c0f:f248::/32;
+    real_ip_header CF-Connecting-IP;
+
+    # Logging
+    access_log /var/log/nginx/DOMAIN_PLACEHOLDER-access.log;
+    error_log /var/log/nginx/DOMAIN_PLACEHOLDER-error.log;
+
+    # Proxy to OpenAlgo MCP Server
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+
+        # WebSocket support for SSE
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+
+        # Buffering
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # Health check endpoint
+    location /health {
+        proxy_pass http://127.0.0.1:8000/health;
+        access_log off;
+    }
+}
+NGINX_PROD_EOF
+
+            # Replace domain placeholder
+            sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN_NAME/g" /etc/nginx/sites-available/$DOMAIN_NAME
+
+            # Test and reload
+            if nginx -t; then
+                systemctl reload nginx
+                echo -e "${GREEN}✅ Production Nginx configuration applied${NC}"
+            else
+                echo -e "${YELLOW}⚠️  Nginx config test failed, keeping certbot's config${NC}"
+            fi
+
             SSL_SUCCESS=true
         else
             echo -e "${RED}❌ Failed to obtain SSL certificate${NC}"
