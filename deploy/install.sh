@@ -248,8 +248,13 @@ fi
 # Test configuration
 nginx -t
 
-# Reload Nginx
-systemctl reload nginx
+# Start or reload Nginx
+if systemctl is-active --quiet nginx; then
+    systemctl reload nginx
+else
+    systemctl start nginx
+    systemctl enable nginx
+fi
 
 echo ""
 echo -e "${GREEN}✅ Nginx configured successfully!${NC}"
@@ -429,7 +434,11 @@ NGINX_PROD_EOF
 
             # Test and reload
             if nginx -t; then
-                systemctl reload nginx
+                if systemctl is-active --quiet nginx; then
+                    systemctl reload nginx
+                else
+                    systemctl start nginx
+                fi
                 echo -e "${GREEN}✅ Production Nginx configuration applied${NC}"
             else
                 echo -e "${YELLOW}⚠️  Nginx config test failed, keeping certbot's config${NC}"
