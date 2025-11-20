@@ -183,8 +183,8 @@ def get_quote(symbol: str, exchange: str = "NSE") -> str:
         return f"Error getting quote: {str(e)}"
 
 # Export the FastMCP app for Vercel
-# Vercel will use this as the ASGI application
-app = mcp.get_asgi_app()
+# FastMCP uses Starlette internally, export the app directly
+app = mcp.app
 
 # For local testing
 if __name__ == "__main__":
