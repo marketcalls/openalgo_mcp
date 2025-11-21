@@ -310,48 +310,63 @@ def place_split_order(
 def place_options_order(
     underlying: str,
     exchange: str,
-    expiry_date: str,
     offset: str,
     option_type: str,
     action: str,
     quantity: int,
     strategy: str = "Python",
+    expiry_date: Optional[str] = None,
     price_type: str = "MARKET",
-    product: str = "NRML",
-    price: Optional[float] = None
+    product: str = "MIS",
+    price: Optional[float] = None,
+    trigger_price: Optional[float] = None,
+    disclosed_quantity: Optional[int] = None
 ) -> str:
     """
     Place an options order with ATM/ITM/OTM offset.
 
     Args:
-        underlying: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
-        exchange: Exchange for underlying ('NSE_INDEX', 'BSE_INDEX')
-        expiry_date: Expiry date in format 'DDMMMYY' (e.g., '28OCT25')
-        offset: Strike offset - 'ATM', 'ITM1'-'ITM10', 'OTM1'-'OTM10'
+        underlying: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY', 'NIFTY28OCT25FUT')
+        exchange: Exchange for underlying ('NSE_INDEX', 'BSE_INDEX', 'NFO', 'NSE')
+        offset: Strike offset - 'ATM', 'ITM1'-'ITM50', 'OTM1'-'OTM50'
         option_type: 'CE' for Call or 'PE' for Put
         action: 'BUY' or 'SELL'
-        quantity: Number of lots
+        quantity: Number of contracts (must be multiple of lot size)
         strategy: Strategy name
+        expiry_date: Expiry date in format 'DDMMMYY' (e.g., '25NOV25'). Optional if underlying includes expiry.
         price_type: 'MARKET', 'LIMIT', 'SL', 'SL-M'
-        product: 'NRML', 'MIS', 'CNC'
-        price: Limit price (required for LIMIT orders)
+        product: 'MIS' (intraday) or 'NRML' (carry forward)
+        price: Limit price (required for LIMIT/SL orders)
+        trigger_price: Trigger price (required for SL/SL-M orders)
+        disclosed_quantity: Disclosed quantity
     """
     try:
         data = {
             "strategy": strategy,
             "underlying": underlying.upper(),
             "exchange": exchange.upper(),
-            "expiry_date": expiry_date,
             "offset": offset.upper(),
             "option_type": option_type.upper(),
             "action": action.upper(),
-            "quantity": str(quantity),
+            "quantity": quantity,
             "pricetype": price_type.upper(),
             "product": product.upper()
         }
 
+        if expiry_date is not None:
+            data["expiry_date"] = expiry_date
         if price is not None:
             data["price"] = str(price)
+        else:
+            data["price"] = "0"
+        if trigger_price is not None:
+            data["trigger_price"] = str(trigger_price)
+        else:
+            data["trigger_price"] = "0"
+        if disclosed_quantity is not None:
+            data["disclosed_quantity"] = str(disclosed_quantity)
+        else:
+            data["disclosed_quantity"] = "0"
 
         response = run_async(http_client._make_request("optionsorder", data))
         return json.dumps(response, indent=2)
