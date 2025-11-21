@@ -277,16 +277,15 @@ if [ -z "$RESOLVED_IP" ]; then
     echo "  Domain: $DOMAIN_NAME"
     echo "  Points to: $SERVER_IP"
     echo ""
-    echo "After DNS is configured, run:"
-    echo "  sudo certbot --nginx -d $DOMAIN_NAME"
+    echo "After DNS is configured, run the SSL setup command shown at the end."
     SSL_SKIP=true
 elif [ "$RESOLVED_IP" != "$SERVER_IP" ]; then
-    echo -e "${YELLOW}⚠️  DNS points to different IP${NC}"
+    echo -e "${YELLOW}⚠️  DNS points to different IP (likely Cloudflare proxy)${NC}"
     echo "  Domain resolves to: $RESOLVED_IP"
     echo "  This server IP: $SERVER_IP"
     echo ""
-    echo "After fixing DNS, run:"
-    echo "  sudo certbot --nginx -d $DOMAIN_NAME"
+    echo "If using Cloudflare, temporarily disable proxy (grey cloud) for SSL setup."
+    echo "Or run the SSL setup command shown at the end."
     SSL_SKIP=true
 else
     echo -e "${GREEN}✅ DNS correctly configured ($RESOLVED_IP)${NC}"
@@ -297,20 +296,30 @@ else
 
     if [ -z "$LETSENCRYPT_EMAIL" ]; then
         echo -e "${YELLOW}⚠️  Email required for SSL certificate${NC}"
-        echo "Run manually: sudo certbot --nginx -d $DOMAIN_NAME"
+        echo "Run the SSL setup command shown at the end."
         SSL_SKIP=true
     else
         echo ""
         echo "Obtaining SSL certificate from Let's Encrypt..."
 
-        # Run certbot non-interactively
-        if certbot --nginx -d $DOMAIN_NAME --non-interactive --agree-tos --email $LETSENCRYPT_EMAIL --redirect; then
+        # Run certbot certonly (don't let it modify nginx config)
+        if certbot certonly --webroot -w /var/www/html -d $DOMAIN_NAME --non-interactive --agree-tos --email $LETSENCRYPT_EMAIL; then
             echo -e "${GREEN}✅ SSL certificate obtained successfully!${NC}"
+            SSL_SUCCESS=true
+        else
+            echo -e "${RED}❌ Failed to obtain SSL certificate${NC}"
+            echo "You can try manually with the SSL setup command shown at the end."
+            SSL_SKIP=true
+        fi
+    fi
+fi
 
-            # Apply production Nginx config with proper SSL settings
-            echo "Applying production Nginx configuration..."
+# Apply production Nginx config (regardless of certbot success, if cert exists)
+if [ -f "/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem" ]; then
+    echo ""
+    echo "Applying production Nginx configuration..."
 
-            cat > /etc/nginx/sites-available/$DOMAIN_NAME << 'NGINX_PROD_EOF'
+    cat > /etc/nginx/sites-available/$DOMAIN_NAME << 'NGINX_PROD_EOF'
 # OpenAlgo MCP - Nginx Production Configuration
 # Domain: DOMAIN_PLACEHOLDER
 
@@ -319,6 +328,11 @@ server {
     listen 80;
     listen [::]:80;
     server_name DOMAIN_PLACEHOLDER;
+
+    # Let's Encrypt challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
 
     location / {
         return 301 https://$host$request_uri;
@@ -336,7 +350,7 @@ server {
     ssl_certificate /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem;
 
-    # SSL Configuration (matches working demo.openalgo.in)
+    # SSL Configuration
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers on;
     ssl_ciphers EECDH+AESGCM:EDH+AESGCM;
@@ -344,102 +358,49 @@ server {
     ssl_session_timeout 10m;
     ssl_session_cache shared:SSL:10m;
     ssl_session_tickets off;
-    ssl_stapling on;
-    ssl_stapling_verify on;
 
-    # Security Headers (matches working demo.openalgo.in)
+    # Security Headers
     add_header X-Frame-Options DENY;
     add_header X-Content-Type-Options nosniff;
     add_header X-XSS-Protection "1; mode=block";
     add_header Strict-Transport-Security "max-age=63072000" always;
-
-    # Cloudflare Real IP
-    set_real_ip_from 173.245.48.0/20;
-    set_real_ip_from 103.21.244.0/22;
-    set_real_ip_from 103.22.200.0/22;
-    set_real_ip_from 103.31.4.0/22;
-    set_real_ip_from 141.101.64.0/18;
-    set_real_ip_from 108.162.192.0/18;
-    set_real_ip_from 190.93.240.0/20;
-    set_real_ip_from 188.114.96.0/20;
-    set_real_ip_from 197.234.240.0/22;
-    set_real_ip_from 198.41.128.0/17;
-    set_real_ip_from 162.158.0.0/15;
-    set_real_ip_from 104.16.0.0/13;
-    set_real_ip_from 104.24.0.0/14;
-    set_real_ip_from 172.64.0.0/13;
-    set_real_ip_from 131.0.72.0/22;
-    set_real_ip_from 2400:cb00::/32;
-    set_real_ip_from 2606:4700::/32;
-    set_real_ip_from 2803:f800::/32;
-    set_real_ip_from 2405:b500::/32;
-    set_real_ip_from 2405:8100::/32;
-    set_real_ip_from 2a06:98c0::/29;
-    set_real_ip_from 2c0f:f248::/32;
-    real_ip_header CF-Connecting-IP;
-
-    # Logging
-    access_log /var/log/nginx/DOMAIN_PLACEHOLDER-access.log;
-    error_log /var/log/nginx/DOMAIN_PLACEHOLDER-error.log;
 
     # Proxy to OpenAlgo MCP Server
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
 
-        # WebSocket support for SSE
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-
         # Headers
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Port $server_port;
 
-        # Timeouts (extended for broker authentication)
+        # Timeouts
         proxy_read_timeout 300s;
         proxy_connect_timeout 300s;
         proxy_send_timeout 300s;
 
         # Buffering
         proxy_buffering off;
-        proxy_request_buffering off;
-
-        proxy_redirect off;
-    }
-
-    # Health check endpoint
-    location /health {
-        proxy_pass http://127.0.0.1:8000/health;
-        access_log off;
     }
 }
 NGINX_PROD_EOF
 
-            # Replace domain placeholder
-            sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN_NAME/g" /etc/nginx/sites-available/$DOMAIN_NAME
+    # Replace domain placeholder
+    sed -i "s/DOMAIN_PLACEHOLDER/$DOMAIN_NAME/g" /etc/nginx/sites-available/$DOMAIN_NAME
 
-            # Test and reload
-            if nginx -t; then
-                if systemctl is-active --quiet nginx; then
-                    systemctl reload nginx
-                else
-                    systemctl start nginx
-                fi
-                echo -e "${GREEN}✅ Production Nginx configuration applied${NC}"
-            else
-                echo -e "${YELLOW}⚠️  Nginx config test failed, keeping certbot's config${NC}"
-            fi
+    # Ensure symlink exists
+    ln -sf /etc/nginx/sites-available/$DOMAIN_NAME /etc/nginx/sites-enabled/
 
-            SSL_SUCCESS=true
-        else
-            echo -e "${RED}❌ Failed to obtain SSL certificate${NC}"
-            echo "You can try manually: sudo certbot --nginx -d $DOMAIN_NAME"
-            SSL_SKIP=true
-        fi
+    # Test and reload
+    if nginx -t; then
+        systemctl reload nginx
+        echo -e "${GREEN}✅ Production Nginx configuration applied${NC}"
+        SSL_SUCCESS=true
+    else
+        echo -e "${RED}❌ Nginx config test failed${NC}"
+        nginx -t
     fi
 fi
 
@@ -464,14 +425,50 @@ echo ""
 
 if [ "$SSL_SKIP" = true ]; then
     echo "🔐 SSL Certificate Setup:"
-    echo "   Run the following command to enable HTTPS:"
+    echo "   Run the following commands to enable HTTPS:"
     echo ""
-    echo -e "   ${YELLOW}sudo certbot --nginx -d $DOMAIN_NAME${NC}"
+    echo -e "   ${YELLOW}# Step 1: Get SSL certificate${NC}"
+    echo -e "   ${YELLOW}sudo certbot certonly --webroot -w /var/www/html -d $DOMAIN_NAME${NC}"
     echo ""
-    echo "   This will:"
-    echo "   • Obtain a free Let's Encrypt SSL certificate"
-    echo "   • Automatically configure HTTPS"
-    echo "   • Set up auto-renewal"
+    echo -e "   ${YELLOW}# Step 2: Apply production nginx config${NC}"
+    cat << 'MANUAL_EOF'
+   sudo cat > /etc/nginx/sites-available/$DOMAIN_NAME << 'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN_NAME;
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name $DOMAIN_NAME;
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers EECDH+AESGCM:EDH+AESGCM;
+    add_header Strict-Transport-Security "max-age=63072000" always;
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+    }
+}
+EOF
+MANUAL_EOF
+    echo ""
+    echo -e "   ${YELLOW}# Step 3: Reload nginx${NC}"
+    echo -e "   ${YELLOW}sudo nginx -t && sudo systemctl reload nginx${NC}"
+    echo ""
+    echo "   Note: If using Cloudflare, temporarily set DNS to 'DNS only' (grey cloud)"
+    echo "   before running certbot, then re-enable proxy after."
     echo ""
 fi
 echo "📖 Useful Commands:"
