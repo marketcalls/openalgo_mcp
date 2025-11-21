@@ -326,8 +326,11 @@ def place_options_order(
     Place an options order with ATM/ITM/OTM offset.
 
     Args:
-        underlying: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY', 'NIFTY28OCT25FUT')
-        exchange: Exchange for underlying ('NSE_INDEX', 'BSE_INDEX', 'NFO', 'NSE')
+        underlying: Underlying symbol. Supported indices:
+            NSE_INDEX: NIFTY, BANKNIFTY, FINNIFTY, NIFTYNXT50, MIDCPNIFTY
+            BSE_INDEX: SENSEX, BANKEX, SENSEX50
+            Or futures like 'NIFTY25NOV25FUT'
+        exchange: 'NSE_INDEX', 'BSE_INDEX', 'NFO', 'NSE', 'BFO', 'BSE', 'CDS', 'MCX'
         offset: Strike offset - 'ATM', 'ITM1'-'ITM50', 'OTM1'-'OTM50'
         option_type: 'CE' for Call or 'PE' for Put
         action: 'BUY' or 'SELL'
@@ -382,27 +385,41 @@ def place_options_multi_order(
     expiry_date: Optional[str] = None
 ) -> str:
     """
-    Place a multi-leg options order (spreads, iron condor, etc.).
+    Place a multi-leg options order (spreads, iron condor, straddle, etc.).
+    Supports 1-20 legs. BUY legs execute first for margin efficiency.
 
     Args:
         strategy: Strategy name
-        underlying: Underlying symbol (e.g., 'NIFTY', 'BANKNIFTY')
-        exchange: Exchange for underlying ('NSE_INDEX', 'BSE_INDEX')
-        legs: JSON string of leg dictionaries, each containing:
-            - offset: Strike offset ('ATM', 'ITM1'-'ITM10', 'OTM1'-'OTM10')
+        underlying: Underlying symbol. Supported indices:
+            NSE_INDEX: NIFTY, BANKNIFTY, FINNIFTY, NIFTYNXT50, MIDCPNIFTY
+            BSE_INDEX: SENSEX, BANKEX, SENSEX50
+            Or futures like 'NIFTY25NOV25FUT'
+        exchange: 'NSE_INDEX', 'BSE_INDEX', 'NFO', 'NSE', 'BFO', 'BSE', 'CDS', 'MCX'
+        legs: JSON string array of leg objects. Each leg requires:
+            - offset: Strike offset ('ATM', 'ITM1'-'ITM50', 'OTM1'-'OTM50')
             - option_type: 'CE' for Call or 'PE' for Put
             - action: 'BUY' or 'SELL'
-            - quantity: Number of lots
-            - expiry_date: (Optional) Expiry date for this leg if different from main expiry
-        expiry_date: Default expiry date in format 'DDMMMYY' (e.g., '25NOV25') for all legs
+            - quantity: Number of contracts (must be multiple of lot size)
+          Optional per leg:
+            - expiry_date: Per-leg expiry (DDMMMYY) for calendar/diagonal spreads
+            - pricetype: 'MARKET', 'LIMIT', 'SL', 'SL-M' (default: MARKET)
+            - product: 'MIS' or 'NRML' (default: MIS)
+            - price: Limit price (default: 0)
+            - trigger_price: For SL orders (default: 0)
+            - disclosed_quantity: (default: 0)
+        expiry_date: Default expiry date 'DDMMMYY' for all legs (optional if underlying has expiry)
 
-    Example legs for Iron Condor (same expiry):
-        '[{"offset": "OTM6", "option_type": "CE", "action": "BUY", "quantity": 75},
-          {"offset": "OTM6", "option_type": "PE", "action": "BUY", "quantity": 75},
-          {"offset": "OTM4", "option_type": "CE", "action": "SELL", "quantity": 75},
-          {"offset": "OTM4", "option_type": "PE", "action": "SELL", "quantity": 75}]'
+    Example - Iron Condor (same expiry):
+        '[{"offset": "OTM10", "option_type": "CE", "action": "BUY", "quantity": 75},
+          {"offset": "OTM10", "option_type": "PE", "action": "BUY", "quantity": 75},
+          {"offset": "OTM5", "option_type": "CE", "action": "SELL", "quantity": 75},
+          {"offset": "OTM5", "option_type": "PE", "action": "SELL", "quantity": 75}]'
 
-    Example legs for Diagonal Spread (different expiry):
+    Example - Calendar Spread (different expiries):
+        '[{"offset": "ATM", "option_type": "CE", "action": "BUY", "quantity": 75, "expiry_date": "30DEC25"},
+          {"offset": "ATM", "option_type": "CE", "action": "SELL", "quantity": 75, "expiry_date": "25NOV25"}]'
+
+    Example - Diagonal Spread (different strikes & expiries):
         '[{"offset": "ITM2", "option_type": "CE", "action": "BUY", "quantity": 75, "expiry_date": "30DEC25"},
           {"offset": "OTM2", "option_type": "CE", "action": "SELL", "quantity": 75, "expiry_date": "25NOV25"}]'
     """
